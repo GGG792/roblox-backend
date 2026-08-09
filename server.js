@@ -1,16 +1,11 @@
 const express = require('express');
 const cors = require('cors');
 const https = require('https');
-
 const app = express();
 const PORT = process.env.PORT || 10000;
 
 // ===== 中间件 =====
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+app.use(cors({ origin: '*', methods: ['GET', 'POST', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] }));
 app.use(express.json());
 
 // ===== Roblox API 配置 =====
@@ -59,11 +54,9 @@ function fetchJSON(url, options = {}) {
         ...options.headers
       }
     };
-
     if (options.body) {
       requestOptions.headers['Content-Type'] = 'application/json';
     }
-
     const req = https.request(requestOptions, (res) => {
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
@@ -76,10 +69,11 @@ function fetchJSON(url, options = {}) {
         }
       });
     });
-
     req.on('error', (e) => reject(e));
-    req.setTimeout(10000, () => { req.destroy(); reject(new Error('请求超时')); });
-
+    req.setTimeout(10000, () => {
+      req.destroy();
+      reject(new Error('请求超时'));
+    });
     if (options.body) {
       req.write(JSON.stringify(options.body));
     }
@@ -90,7 +84,6 @@ function fetchJSON(url, options = {}) {
 // ===== 简易缓存 =====
 const cache = new Map();
 const CACHE_TTL = 60000; // 60秒
-
 function getCached(key) {
   const item = cache.get(key);
   if (item && Date.now() - item.time < CACHE_TTL) {
@@ -98,7 +91,6 @@ function getCached(key) {
   }
   return null;
 }
-
 function setCached(key, data) {
   cache.set(key, { data, time: Date.now() });
   // 清理过期缓存
@@ -111,7 +103,6 @@ function setCached(key, data) {
 }
 
 // ===== 路由 =====
-
 // 健康检查
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -146,20 +137,13 @@ app.post('/api/user/lookup', async (req, res) => {
     if (!username) {
       return res.status(400).json({ error: '请提供 username' });
     }
-
     const cacheKey = `lookup_${username}`;
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
-
-    const result = await fetchJSON(ROBLOX_API.usernames, {
-      method: 'POST',
-      body: { usernames: [username], excludeBannedUsers: true }
-    });
-
+    const result = await fetchJSON(ROBLOX_API.usernames, { method: 'POST', body: { usernames: [username], excludeBannedUsers: true } });
     if (result.status !== 200 || !result.data.data || result.data.data.length === 0) {
       return res.status(404).json({ error: `找不到用户: ${username}` });
     }
-
     setCached(cacheKey, result.data.data[0]);
     res.json(result.data.data[0]);
   } catch (err) {
@@ -174,12 +158,10 @@ app.get('/api/user/:userId', async (req, res) => {
     const cacheKey = `user_${uid}`;
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
-
     const result = await fetchJSON(ROBLOX_API.user(uid));
     if (result.status !== 200) {
       return res.status(result.status).json({ error: '获取用户信息失败' });
     }
-
     setCached(cacheKey, result.data);
     res.json(result.data);
   } catch (err) {
@@ -194,12 +176,10 @@ app.get('/api/user/:userId/headshot', async (req, res) => {
     const cacheKey = `headshot_${uid}`;
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
-
     const result = await fetchJSON(ROBLOX_API.headshot(uid));
     if (result.status !== 200) {
       return res.status(result.status).json({ error: '获取头像失败' });
     }
-
     setCached(cacheKey, result.data);
     res.json(result.data);
   } catch (err) {
@@ -214,12 +194,10 @@ app.get('/api/user/:userId/avatar-full', async (req, res) => {
     const cacheKey = `avatarfull_${uid}`;
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
-
     const result = await fetchJSON(ROBLOX_API.fullAvatar(uid));
     if (result.status !== 200) {
       return res.status(result.status).json({ error: '获取全身头像失败' });
     }
-
     setCached(cacheKey, result.data);
     res.json(result.data);
   } catch (err) {
@@ -234,12 +212,10 @@ app.get('/api/user/:userId/avatar-info', async (req, res) => {
     const cacheKey = `avatarinfo_${uid}`;
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
-
     const result = await fetchJSON(ROBLOX_API.avatar(uid));
     if (result.status !== 200) {
       return res.status(result.status).json({ error: '获取装扮信息失败' });
     }
-
     setCached(cacheKey, result.data);
     res.json(result.data);
   } catch (err) {
@@ -247,14 +223,13 @@ app.get('/api/user/:userId/avatar-info', async (req, res) => {
   }
 });
 
-// ===== 完整用户资料（聚合接口） =====
+// ===== 完整用户资料（聚合接口）=====
 app.get('/api/user/:userId/profile', async (req, res) => {
   try {
     const uid = req.params.userId;
     const cacheKey = `profile_${uid}`;
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
-
     // 并行请求所有数据
     const [userResp, headshotResp, fullAvatarResp, avatarResp] = await Promise.all([
       fetchJSON(ROBLOX_API.user(uid)),
@@ -262,14 +237,12 @@ app.get('/api/user/:userId/profile', async (req, res) => {
       fetchJSON(ROBLOX_API.fullAvatar(uid)),
       fetchJSON(ROBLOX_API.avatar(uid))
     ]);
-
     const profile = {
       user: userResp.data,
       headshot: headshotResp.data,
       fullAvatar: fullAvatarResp.data,
       avatar: avatarResp.data
     };
-
     setCached(cacheKey, profile);
     res.json(profile);
   } catch (err) {
@@ -284,12 +257,10 @@ app.get('/api/games/:universeIds', async (req, res) => {
     const cacheKey = `games_${ids}`;
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
-
     const result = await fetchJSON(ROBLOX_API.games(ids));
     if (result.status !== 200) {
       return res.status(result.status).json({ error: '获取游戏信息失败' });
     }
-
     setCached(cacheKey, result.data);
     res.json(result.data);
   } catch (err) {
@@ -304,12 +275,10 @@ app.get('/api/games/:universeId/icons', async (req, res) => {
     const cacheKey = `gameicons_${uid}`;
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
-
     const result = await fetchJSON(ROBLOX_API.gameIcons(uid));
     if (result.status !== 200) {
       return res.status(result.status).json({ error: '获取游戏图标失败' });
     }
-
     setCached(cacheKey, result.data);
     res.json(result.data);
   } catch (err) {
@@ -324,12 +293,10 @@ app.get('/api/games/:universeId/thumbnails', async (req, res) => {
     const cacheKey = `gamethumbs_${uid}`;
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
-
     const result = await fetchJSON(ROBLOX_API.gameThumbnails(uid));
     if (result.status !== 200) {
       return res.status(result.status).json({ error: '获取游戏缩略图失败' });
     }
-
     setCached(cacheKey, result.data);
     res.json(result.data);
   } catch (err) {
@@ -344,16 +311,13 @@ app.get('/api/search/games', async (req, res) => {
     if (!query) {
       return res.status(400).json({ error: '请提供 query 参数' });
     }
-
     const cacheKey = `searchgames_${query}`;
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
-
     const result = await fetchJSON(ROBLOX_API.searchGames(query));
     if (result.status !== 200) {
       return res.status(result.status).json({ error: '搜索游戏失败' });
     }
-
     setCached(cacheKey, result.data);
     res.json(result.data);
   } catch (err) {
@@ -368,16 +332,13 @@ app.get('/api/search/users', async (req, res) => {
     if (!keyword) {
       return res.status(400).json({ error: '请提供 keyword 参数' });
     }
-
     const cacheKey = `searchusers_${keyword}`;
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
-
     const result = await fetchJSON(ROBLOX_API.search(keyword));
     if (result.status !== 200) {
       return res.status(result.status).json({ error: '搜索用户失败' });
     }
-
     setCached(cacheKey, result.data);
     res.json(result.data);
   } catch (err) {
@@ -392,12 +353,10 @@ app.get('/api/place/:placeId/universe', async (req, res) => {
     const cacheKey = `place2uni_${pid}`;
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
-
     const result = await fetchJSON(ROBLOX_API.placeToUniverse(pid));
     if (result.status !== 200) {
       return res.status(result.status).json({ error: '转换失败' });
     }
-
     setCached(cacheKey, result.data);
     res.json(result.data);
   } catch (err) {
@@ -405,8 +364,11 @@ app.get('/api/place/:placeId/universe', async (req, res) => {
   }
 });
 
-// ===== 启动服务器 =====
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Roblox Backend API running on port ${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/health`);
-});
+// ===== 启动服务器 (Vercel 会处理这部分) =====
+// app.listen(PORT, '0.0.0.0', () => {
+//   console.log(`Roblox Backend API running on port ${PORT}`);
+//   console.log(`Health check: http://localhost:${PORT}/health`);
+// });
+
+// 导出 app 供 Vercel 使用
+module.exports = app;
